@@ -91,7 +91,7 @@ public final class MysqlService {
 
     public ResultSet executeQuery(String query) {
         Connection connection = pool.checkOut();
-        Future<ResultSet> resultSetFuture = queryExecutor.submit(() -> {
+//        Future<ResultSet> resultSetFuture = queryExecutor.submit(() -> {
             try {
                 Statement stmt = connection.createStatement();
                 stmt.executeQuery(query);
@@ -99,13 +99,13 @@ public final class MysqlService {
             } catch (SQLException e) {
                 e.printStackTrace();
                 return null;
-            }
-        });
-        try {
-            return resultSetFuture.get();
-        } catch (InterruptedException | ExecutionException e) {
-            e.printStackTrace();
-            return null;
+//            }
+//        });
+//        try {
+//            return resultSetFuture.get();
+//        } catch (InterruptedException | ExecutionException e) {
+//            e.printStackTrace();
+//            return null;
         } finally {
             pool.pop(connection);
         }

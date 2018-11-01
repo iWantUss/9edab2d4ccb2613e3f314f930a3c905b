@@ -140,13 +140,15 @@ public class StorageServiceImpl implements StorageService {
         ResultSet read = ms.read("source, target", String.format("handler%d", parent), where);
         Map<Integer, Integer> res = new HashMap<>();
         while (read.next()) {
-            res.put(read.getInt(1), read.getInt(2));
+            res.put(read.getInt(2), read.getInt(1));
         }
         return res;
     }
 
     @Override
     public Map<Integer, Integer> getIndirectFriendship(int parent, Set<Integer> target) throws SQLException {
+        Map<Integer, Boolean> finded = target.stream().collect(Collectors.toMap(Integer::intValue, i -> false));
+
         String where = target.stream().map(id -> String.format("`target`=%d", id))
                 .collect(Collectors.joining(" OR "));
         ResultSet read = ms.read("source, target", String.format("handler%d", parent), where);
@@ -155,37 +157,57 @@ public class StorageServiceImpl implements StorageService {
             ResultSet source = ms.read("source", String.format("handler%d", parent), String.format("`target`=%d LIMIT 0,1", read.getInt(1)));
             if (source.next()) {
                 if (source.getInt(1) == parent) {
-                    res.put(parent, read.getInt(1));
-                    res.put(read.getInt(1), read.getInt(2));
+                    res.put(read.getInt(1), parent);
+                    res.put(read.getInt(2), read.getInt(1));
                 }
             }
         }
-
-        ResultSet rs = ms.read("target", String.format("handler%1$d", parent), "`fetched`=0");
+        int offset = 0, offset1 = 0, count = 5000;
         List<Integer> list = new ArrayList<>();
-        while (rs.next()) {
-            list.add(rs.getInt(1));
-        }
+        while (ms.countAll(String.format("handler%1$d", parent), "") > offset1) {
+            offset1 += count;
 
-        for (Integer targetId : target) {
-            int offset = 0, count = 10000;
-            while (ms.countAll(String.format("handler%1$d", targetId), "") > offset) {
-                ResultSet rs2 = ms.read("source, target", String.format("handler%1$d LIMIT %2$d,%3$d", targetId, offset, count), "");
-                offset+=count;
-                while (rs2.next()) {
-                    if (list.contains(rs2.getInt(1))) {
-                        ResultSet source = ms.read("source", String.format("handler%d", parent), String.format("`target`=%d LIMIT 0,1", rs2.getInt(1)));
-                        if (source.next()) {
-                            if (source.getInt(1) == parent) {
-                                res.put(parent, rs2.getInt(1));
-                                res.put(rs2.getInt(1), rs2.getInt(2));
-                            }
+            ResultSet rs = ms.read("target", String.format("handler%1$d LIMIT %2$d,%3$d", parent, offset1, count), "");
+            while (rs.next()) {
+                list.add(rs.getInt(1));
+            }
+
+            for (Map.Entry<Integer, Boolean> targetEntry : finded.entrySet()) {
+                if(targetEntry.getValue()) continue;
+                int targetId = targetEntry.getKey();
+                while (ms.countAll(String.format("handler%1$d", targetId), "") > offset) {
+                    ResultSet rs2 = ms.read("source, target", String.format("handler%1$d LIMIT %2$d,%3$d", targetId, offset, count), "");
+                    offset += count;
+                    while (rs2.next()) {
+                        if (list.contains(rs2.getInt(1))) {
+                            putFriendship(parent, res, rs2);
+                            targetEntry.setValue(true);
+                            break;
                         }
                     }
+                    if(targetEntry.getValue()) break;
                 }
+                offset=0;
+            }
+            list.clear();
+        }
+
+        return res;
+    }
+
+    private void putFriendship(int parent, Map<Integer, Integer> res, ResultSet rs2) throws SQLException {
+        ResultSet source = ms.read("source", String.format("handler%d", parent), String.format("`target`=%d LIMIT 0,1", rs2.getInt(1)));
+        if (source.next()) {
+            res.put(rs2.getInt(2), rs2.getInt(1));
+            if (source.getInt(1) == parent) {
+                res.put(rs2.getInt(1), parent);
+                return;
+            }
+            ResultSet source2 = ms.read("source, target", String.format("handler%d", parent), String.format("`target`=%d LIMIT 0,1", source.getInt(1)));
+            if (source2.next()) {
+                putFriendship(parent, res, source2);
             }
         }
-        return res;
     }
 
     @Override
