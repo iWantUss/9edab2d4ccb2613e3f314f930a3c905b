@@ -1,5 +1,6 @@
 package storage;
 
+import javafx.util.Pair;
 import storage.entity.Friend;
 import storage.entity.Queue;
 import storage.entity.Target;
@@ -14,12 +15,7 @@ import java.util.stream.Collectors;
 public class StorageServiceImpl implements StorageService {
 
     private static final String TARGETS_TABLE_NAME = "targets";
-    MysqlService ms = MysqlService.getInstance(new Config() {
-        @Override
-        public String getDataBase() {
-            return "vk";
-        }
-    });
+    MysqlService ms = MysqlService.getInstance(Config.getInstance());
 
     @Override
     public void addHandlers(int target, int source, Collection<Integer> users) {
@@ -134,60 +130,82 @@ public class StorageServiceImpl implements StorageService {
     }
 
     @Override
-    public Map<Integer, Integer> getDirectFriendship(int parent, Set<Integer> target) throws SQLException {
-        String where = target.stream().map(id -> String.format("`target`=%d", id))
-                .collect(Collectors.joining(" OR ", String.format("`source`=%d AND (", parent), ")"));
-        ResultSet read = ms.read("source, target", String.format("handler%d", parent), where);
-        Map<Integer, Integer> res = new HashMap<>();
-        while (read.next()) {
-            res.put(read.getInt(2), read.getInt(1));
+    public Set<Integer> getFindedFriendship() {
+        ResultSet read = ms.read("DISTINCT sourceid", TARGETS_TABLE_NAME, "`hasHandlers`=1");
+        Set<Integer> res = new HashSet<>();
+        try {
+            while (read.next()) {
+                res.add(read.getInt(1));
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+            return Collections.emptySet();
         }
         return res;
     }
 
     @Override
-    public Map<Integer, Integer> getIndirectFriendship(int parent, Set<Integer> target) throws SQLException {
-        Map<Integer, Boolean> finded = target.stream().collect(Collectors.toMap(Integer::intValue, i -> false));
-
-        String where = target.stream().map(id -> String.format("`target`=%d", id))
-                .collect(Collectors.joining(" OR "));
-        ResultSet read = ms.read("source, target", String.format("handler%d", parent), where);
+    public Map<Integer, Integer> getDirectFriendship(int parent, Set<Integer> target) {
+        ResultSet read = ms.read("target", String.format("handler%d", parent), String.format("`source`=%d", parent));
         Map<Integer, Integer> res = new HashMap<>();
-        while (read.next()) {
-            ResultSet source = ms.read("source", String.format("handler%d", parent), String.format("`target`=%d LIMIT 0,1", read.getInt(1)));
-            if (source.next()) {
-                if (source.getInt(1) == parent) {
-                    res.put(read.getInt(1), parent);
-                    res.put(read.getInt(2), read.getInt(1));
+        try {
+            while (read.next()) {
+                try {
+                    if (target.contains(read.getInt(1)))
+                        res.put(parent, read.getInt(1));
+                } catch (SQLException e) {
+                    e.printStackTrace();
                 }
             }
+        } catch (SQLException e) {
+            e.printStackTrace();
+            return Collections.emptyMap();
         }
-        int offset = 0, offset1 = 0, count = 5000;
-        List<Integer> list = new ArrayList<>();
+        return res;
+    }
+
+    @Override
+    public List<Pair<Integer, Integer>> getIndirectFriendship(int parent, Set<Integer> target) {
+        Map<Integer, Boolean> finded = target.stream().filter(i -> i != parent).collect(Collectors.toMap(Integer::intValue, i -> false));
+        List<Pair<Integer, Integer>> res = new ArrayList<>();
+
+        int offset = 0, offset1 = 0, count = 40000;
+        Set<Integer> list = new HashSet<>(40000);
         while (ms.countAll(String.format("handler%1$d", parent), "") > offset1) {
             offset1 += count;
 
             ResultSet rs = ms.read("target", String.format("handler%1$d LIMIT %2$d,%3$d", parent, offset1, count), "");
-            while (rs.next()) {
-                list.add(rs.getInt(1));
+            try {
+                while (rs.next()) {
+                    list.add(rs.getInt(1));
+                }
+                rs.close();
+            } catch (SQLException e) {
+                e.printStackTrace();
             }
 
             for (Map.Entry<Integer, Boolean> targetEntry : finded.entrySet()) {
-                if(targetEntry.getValue()) continue;
+                if (targetEntry.getValue()) continue;
                 int targetId = targetEntry.getKey();
                 while (ms.countAll(String.format("handler%1$d", targetId), "") > offset) {
                     ResultSet rs2 = ms.read("source, target", String.format("handler%1$d LIMIT %2$d,%3$d", targetId, offset, count), "");
                     offset += count;
-                    while (rs2.next()) {
-                        if (list.contains(rs2.getInt(1))) {
-                            putFriendship(parent, res, rs2);
-                            targetEntry.setValue(true);
-                            break;
+                    try {
+                        while (rs2.next()) {
+                            if (list.contains(rs2.getInt(2))) {
+                                putFriendship(parent, targetId, res, rs2.getInt(2), rs2.getInt(1));
+                                putFriendship(targetId, parent, res, rs2.getInt(1), rs2.getInt(2));
+                                targetEntry.setValue(true);
+                                break;
+                            }
                         }
+                        rs2.close();
+                    } catch (SQLException e) {
+                        e.printStackTrace();
                     }
-                    if(targetEntry.getValue()) break;
+                    if (targetEntry.getValue()) break;
                 }
-                offset=0;
+                offset = 0;
             }
             list.clear();
         }
@@ -195,18 +213,19 @@ public class StorageServiceImpl implements StorageService {
         return res;
     }
 
-    private void putFriendship(int parent, Map<Integer, Integer> res, ResultSet rs2) throws SQLException {
-        ResultSet source = ms.read("source", String.format("handler%d", parent), String.format("`target`=%d LIMIT 0,1", rs2.getInt(1)));
-        if (source.next()) {
-            res.put(rs2.getInt(2), rs2.getInt(1));
-            if (source.getInt(1) == parent) {
-                res.put(rs2.getInt(1), parent);
+    private void putFriendship(int parent, int target, List<Pair<Integer, Integer>> res, int src, int targ) {
+        try {
+            res.add(new Pair<>(targ, src));
+            System.out.printf("Найдена косвенная связь [%d - %d] %d - %d%n", parent, target, targ, src);
+            if (targ == parent) {
                 return;
             }
-            ResultSet source2 = ms.read("source, target", String.format("handler%d", parent), String.format("`target`=%d LIMIT 0,1", source.getInt(1)));
-            if (source2.next()) {
-                putFriendship(parent, res, source2);
+            ResultSet source = ms.read("source, target", String.format("handler%d", parent), String.format("`target`=%d LIMIT 0,1", src));
+            if (source.next()) {
+                 putFriendship(parent, target, res, source.getInt(1), source.getInt(2));
             }
+        } catch (SQLException e) {
+            e.printStackTrace();
         }
     }
 

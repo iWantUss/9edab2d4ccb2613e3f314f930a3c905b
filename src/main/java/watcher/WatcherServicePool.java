@@ -1,16 +1,15 @@
 package watcher;
 
-import storage.StorageService;
-
 import java.util.Collections;
 import java.util.Set;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
-public class WatcherServicePool extends ObjectPool<WatcherService> implements WatcherService{
+public class WatcherServicePool extends ObjectPool<WatcherService> implements WatcherService {
 
     private static volatile WatcherServicePool mInstance;
+    private ExecutorService executor = Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors());
 
     private WatcherServicePool() {
     }
@@ -30,8 +29,6 @@ public class WatcherServicePool extends ObjectPool<WatcherService> implements Wa
     protected WatcherService create() {
         return new WatcherServiceImpl();
     }
-
-    private ExecutorService executor = Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors());
 
     @Override
     public Set<Integer> getFriends(int user) {

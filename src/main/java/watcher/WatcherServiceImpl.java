@@ -8,11 +8,10 @@ import com.vk.api.sdk.exceptions.ClientException;
 import com.vk.api.sdk.httpclient.HttpTransportClient;
 import com.vk.api.sdk.objects.friends.responses.GetResponse;
 import com.vk.api.sdk.objects.users.responses.GetFollowersResponse;
-import com.vk.api.sdk.queries.likes.LikesGetListFilter;
-import com.vk.api.sdk.queries.likes.LikesType;
-import storage.StorageService;
 
-import java.util.*;
+import java.util.Collections;
+import java.util.List;
+import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.stream.Collectors;

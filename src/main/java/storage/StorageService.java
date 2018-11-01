@@ -1,8 +1,11 @@
 package storage;
 
+import javafx.util.Pair;
+
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.Collection;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
@@ -47,9 +50,10 @@ public interface StorageService {
 
     ResultSet getDistinctFriends(int parent, int offset, int count);
     ResultSet getFriends(int parent, int offset, int count);
-    Map<Integer, Integer> getDirectFriendship(int parent, Set<Integer> target) throws SQLException;
+    Set<Integer> getFindedFriendship();
+    Map<Integer, Integer> getDirectFriendship(int parent, Set<Integer> target);
 
-    Map<Integer, Integer> getIndirectFriendship(int parent, Set<Integer> target) throws SQLException;
+    List<Pair<Integer, Integer>> getIndirectFriendship(int parent, Set<Integer> target);
 
     /**
      * пользователь просканирован

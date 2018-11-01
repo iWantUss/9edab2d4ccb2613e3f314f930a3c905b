@@ -1,4 +1,3 @@
-import org.apache.poi.openxml4j.exceptions.InvalidFormatException;
 import org.apache.poi.ss.usermodel.Row;
 import org.apache.poi.ss.usermodel.Sheet;
 import org.apache.poi.ss.usermodel.Workbook;
@@ -7,6 +6,7 @@ import storage.StorageService;
 import storage.StorageServiceImpl;
 import target.TargetService;
 import target.TargetServiceImpl;
+import tools.mysql.Config;
 import watcher.WatcherService;
 import watcher.WatcherServicePool;
 
@@ -14,9 +14,8 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
-import java.sql.SQLException;
+import java.util.Arrays;
 import java.util.Collections;
-import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -34,96 +33,118 @@ public class Main {
         watcher = WatcherServicePool.getInstance();
     }
 
-
-    public static void main(String[] args) throws NullPointerException, IOException, InvalidFormatException, SQLException {
+    public static void main(String[] args) {
+        if (args.length < 3) {
+            throw new Error("Неверный формат команды [host:port где находится БД] [название базы данных] [режим] ...");
+        }
+        Config.createInstance(args[0], args[1]);//.createInstance("localhost:3306", "vk");
+        MODE mode = MODE.valueOf(args[2]);//MODE.EXPORT;
         Main app = new Main();
-        int parent = 5;
 
-
-        while (app.storage.containsAllHandler()) {//Программа будет работать до тех пор, пока не будут найдены все связи
-            int size = 0;
-            switch (parent) {
-                case 0://id машины
-                    size = app.init().size()/4;//4 - количество машин на которых будет запускаться программа
-                    app.init().stream().limit(size).parallel().forEach(par -> {
-                        while (!app.searchAllTargets(par)) ;
-                    });
-                    break;
-
-                case 1://id машины
-                    size = app.init().size()/4;//4 - количество машин на которых будет запускаться программа
-                    app.init().stream().skip(size).limit(size).parallel().forEach(par -> {
-                        while (!app.searchAllTargets(par)) ;
-                    });
-                    break;
-                case 2://id машины
-                    size = app.init().size()/4;//4 - количество машин на которых будет запускаться программа
-                    app.init().stream().skip(size*2).limit(size).parallel().forEach(par -> {
-                        while (!app.searchAllTargets(par)) ;
-                    });
-                    break;
-                case 3://id машины
-                    size = app.init().size()/4;//4 - количество машин на которых будет запускаться программа
-                    app.init().stream().skip(size*3).parallel().forEach(par -> {
-                        while (!app.searchAllTargets(par)) ;
-                    });
-                    break;
-                case 4://Выполняется на мастере кластера, где находится БД
-                    app.storage.init();
-                    app.init().forEach(par -> {
-                        //Добавление целевых пользователей в очередь для обхода
-                        app.storage.addInQueue(Collections.singleton(par), par);
-                        //Создание таблиц
-                        app.storage.createTargetHandlers(par);
-                    });
-                    break;
-                case 5://Выполняется на мастере кластера, где находится БД
-                    Set<Integer> init = app.init();
-                    File file = new File("result.xlsx");
-                    Workbook book = null;
-                    Sheet sheet = null;
-                    try {
-                        FileInputStream fis = new FileInputStream(file);
-                        book = new XSSFWorkbook(fis);
-                        sheet = book.getSheet("RESULT1");
-                        if (sheet == null) {
-                            sheet = book.createSheet("RESULT1");
+        switch (mode) {
+            case INIT:
+                app.storage.init();
+                app.init().forEach(par -> {
+                    //Добавление целевых пользователей в очередь для обхода
+                    app.storage.addInQueue(Collections.singleton(par), par);
+                    //Создание таблиц
+                    app.storage.createTargetHandlers(par);
+                });
+                break;
+            case EXPORT:
+                if (args.length != 5) {
+                    throw new Error("Неверный формат команды EXPORT [путь к файлу] [название листа]");
+                }
+                String path = args[3];
+                File file;
+                if (path == null) {
+                    throw new Error("Не указан путь к файлу");
+                } else {
+                    file = new File(path);
+                    if (file.exists()) {
+                        if (!file.canRead() || !file.canWrite()) {
+                            throw new Error("Нет прав на чтение и запись файла");
                         }
-                    } catch (Exception e) {
-                        e.printStackTrace();
-                    }
-                    for (Integer i : app.init()) {
+                    } else {
                         try {
-                            app.exportFriendship(i, sheet);
-                        } catch (SQLException e) {
-                            e.printStackTrace();
+                            file.createNewFile();
+                        } catch (IOException e) {
+                            throw new Error("Не верно указан путь к файлу.");
                         }
-
                     }
-                    try {
-                        FileOutputStream fileOutputStream = new FileOutputStream(file, true);
-                        book.write(fileOutputStream);
-                        book.close();
-                    } catch (IOException e) {
-                        e.printStackTrace();
+                }
+                String sheetName = args[4];
+                if (sheetName == null) {
+                    throw new Error(String.format("Не указано название листа в файле '%s'", path));
+                }
+                Set<Integer> init = app.init();
+                Workbook book = null;
+                Sheet sheet = null;
+                try {
+                    FileInputStream fis = new FileInputStream(file);
+                    book = new XSSFWorkbook(fis);
+                    sheet = book.getSheet(sheetName);
+                    if (sheet == null) {
+                        sheet = book.createSheet(sheetName);
+                        Row row = sheet.createRow(sheet.getPhysicalNumberOfRows());
+                        row.createCell(0).setCellValue("source");
+                        row.createCell(1).setCellValue("target");
                     }
-                    break;
-                default://добавляет id в список `targets` между которым нужно найти связь
-                    app.storage.addInQueue(Collections.singleton(parent), parent);
-                    app.storage.createTargetHandlers(parent);
-                    break;
-            }
+                } catch (Exception e) {
+                    e.printStackTrace();
+                }
+                for (Integer i : app.init()) {
+                    app.exportFriendship(i, sheet);
+                }
+                try {
+                    FileOutputStream fileOutputStream = new FileOutputStream(file, true);
+                    book.write(fileOutputStream);
+                    book.close();
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+                break;
+            case PARSING:
+                if (args.length != 5) {
+                    throw new Error("Неверный формат команды [host:port где находится БД] [Название базы данных] PARSING [количество машин] [id машины]");
+                }
+                int count;
+                try {
+                    count = Integer.valueOf(args[3]);
+                } catch (NumberFormatException e) {
+                    throw new Error("Неверно указано количество машин");
+                }
+                int segment;//id машины
+                try {
+                    segment = Integer.valueOf(args[4]);
+                    if (segment >= count) {
+                        throw new NumberFormatException();
+                    }
+                } catch (NumberFormatException e) {
+                    throw new Error(String.format("Неверно указан id машины возможные значения [0-%d]", count - 1));
+                }
+                int shift = (int) Math.ceil((double) app.init().size() / count);
+                app.init().stream().skip(shift * segment).limit(segment).parallel().forEach(par -> {
+                    while (!app.allTargetsFinded(par)) ;
+                });
+                break;
+            default:
+                throw new Error(String.format("Unknown mode! Available modes: %s", Arrays.toString(MODE.values())));
         }
         System.out.println("[КОНЕЦ ПРОГАРММЫ]");
     }
 
-    public void exportFriendship(int parent, Sheet sheet) throws SQLException {
-        Map<Integer, Integer> friendship = this.storage.getDirectFriendship(parent, init());
-        friendship.putAll(this.storage.getIndirectFriendship(parent, init()));
-        friendship.forEach((key, value) -> {
-            Row row = sheet.createRow(sheet.getPhysicalNumberOfRows() + 1);
+    public void exportFriendship(int parent, Sheet sheet) {
+
+        this.storage.getDirectFriendship(parent, init()).forEach((key, value) -> {
+            Row row = sheet.createRow(sheet.getPhysicalNumberOfRows());
             putEdge(key, value, row);
-            System.out.printf("%d - %d%n", key, value);
+            System.out.printf("Найдена прямая связь %d - %d%n", key, value);
+        });
+        Set<Integer> init = this.storage.getFindedFriendship();
+        this.storage.getIndirectFriendship(parent, init).forEach(pair -> {
+            Row row = sheet.createRow(sheet.getPhysicalNumberOfRows());
+            putEdge(pair.getKey(), pair.getValue(), row);
         });
     }
 
@@ -132,26 +153,18 @@ public class Main {
         row.createCell(1).setCellValue(target);
     }
 
-
     /**
      * Метод подходит для кластерного распараллеливания
      *
      * @param parent
      * @return
      */
-    public boolean searchAllTargets(int parent) {
+    public boolean allTargetsFinded(int parent) {
         int nextUser = storage.getNextUser(parent);
         Set<Integer> friends = watcher.getFriendsAndFollowers(nextUser);
-
         storage.addHandlers(parent, nextUser, friends);
-
-        try {
-            targetService.hasHandlers(parent);
-        } catch (Exception e) {
-            return true;
-        }
         storage.addInQueue(friends, parent);
-        return false;
+        return targetService.hasFriendship(parent);
     }
 
     public Set<Integer> init() {
@@ -161,5 +174,11 @@ public class Main {
             ).collect(Collectors.toSet());
         }
         return targets;
+    }
+
+    enum MODE {
+        INIT, //Создает БД на мастере
+        PARSING,//Запускает программу в режиме парсинга
+        EXPORT //Экспортирует результат в xlsx
     }
 }

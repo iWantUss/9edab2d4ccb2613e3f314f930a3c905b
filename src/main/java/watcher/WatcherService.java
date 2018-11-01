@@ -1,7 +1,5 @@
 package watcher;
 
-import storage.StorageService;
-
 import java.util.Set;
 
 /**
@@ -16,7 +14,6 @@ public interface WatcherService {
 
     /**
      * Получает список всех друзей и подписчиков
-     *
      *
      * @param parent
      * @return список идентификаторов пользователей

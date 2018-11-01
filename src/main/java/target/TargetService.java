@@ -15,7 +15,7 @@ public interface TargetService {
     /**
      * @return найдены ли все короткие связи
      */
-    void hasHandlers(int updatedTarget) throws SQLException, NullPointerException;
+    boolean hasFriendship(int updatedTarget);
 
 
 }

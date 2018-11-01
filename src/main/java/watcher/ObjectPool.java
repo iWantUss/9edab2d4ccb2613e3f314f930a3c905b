@@ -1,7 +1,5 @@
 package watcher;
 
-import java.util.Enumeration;
-import java.util.Hashtable;
 import java.util.Queue;
 import java.util.concurrent.ConcurrentLinkedQueue;
 
@@ -22,13 +20,11 @@ public abstract class ObjectPool<T> {
             t = unlocked.poll();
             if (t != null) {
                 locked.add(t);
-//                System.out.println(String.format("locked [%d], unlocked [%d] - %s", locked.size(), unlocked.size(), t.getClass().getSimpleName()));
                 return (t);
             }
         }
         t = create();
         locked.add(t);
-//        System.out.println(String.format("locked [%d], unlocked [%d] - %s", locked.size(), unlocked.size(), t.getClass().getSimpleName()));
         return (t);
     }
 
@@ -37,6 +33,5 @@ public abstract class ObjectPool<T> {
         if (unlocked.size() < maxHandlers) {
             unlocked.add(t);
         }
-//        System.out.println(String.format("locked [%d], unlocked [%d] - %s", locked.size(), unlocked.size(), t.getClass().getSimpleName()));
     }
 }

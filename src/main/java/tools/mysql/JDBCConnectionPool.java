@@ -1,5 +1,7 @@
 package tools.mysql;
 
+import com.mysql.jdbc.Driver;
+
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.SQLException;
@@ -11,8 +13,8 @@ public class JDBCConnectionPool extends ExpiredObjectPool<Connection> {
     public JDBCConnectionPool(MysqlConfig config) {
         this.config = config;
         try {
-            Class.forName("com.mysql.jdbc.Driver").newInstance();
-        } catch (InstantiationException | IllegalAccessException | ClassNotFoundException e) {
+            Driver.class.newInstance();
+        } catch (InstantiationException | IllegalAccessException e) {
             e.printStackTrace();
         }
     }
@@ -28,7 +30,7 @@ public class JDBCConnectionPool extends ExpiredObjectPool<Connection> {
             return (DriverManager.getConnection(url, properties));
         } catch (SQLException e) {
             e.printStackTrace();
-            return null;
+            throw new Error("Нет соединения с БД.");
         }
     }
 

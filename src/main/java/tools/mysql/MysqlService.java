@@ -6,10 +6,6 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.Map;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
 import java.util.stream.Collectors;
 
 public final class MysqlService {
@@ -21,8 +17,6 @@ public final class MysqlService {
     private static final String DELETE = "DELETE FROM %s WHERE %s";
     private static volatile MysqlService mInstance;
     private JDBCConnectionPool pool;
-    private ExecutorService executor = Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors() * 2);
-    private ExecutorService queryExecutor = Executors.newFixedThreadPool(4);
 
     private MysqlService(MysqlConfig config) {
         pool = new JDBCConnectionPool(config);
@@ -39,12 +33,17 @@ public final class MysqlService {
         return mInstance;
     }
 
-    public ResultSet read(String select, String tableName, String where) {
+    public ResultSet read(String select, String tableName, String where) throws NullPointerException {
+        ResultSet result = null;
         if (where == null || where.isEmpty()) {
-            return executeQuery(String.format(SELECT, select, tableName));
+            result = executeQuery(String.format(SELECT, select, tableName));
         } else {
-            return executeQuery(String.format(SELECT_WHERE, select, tableName, where));
+            result = executeQuery(String.format(SELECT_WHERE, select, tableName, where));
         }
+        if(result != null){
+            return result;
+        }
+        throw new NullPointerException();
     }
 
     public int countAll(String tableName, String where) {
@@ -84,28 +83,21 @@ public final class MysqlService {
             Statement stmt = connection.createStatement();
             stmt.execute(query);
         } catch (SQLException e) {
-//            System.out.println(String.format("[SKIP] - %s", query));
+            System.out.println(String.format("[SKIP] - %s", query));
+        } finally {
+            pool.pop(connection);
         }
-        pool.pop(connection);
     }
 
     public ResultSet executeQuery(String query) {
         Connection connection = pool.checkOut();
-//        Future<ResultSet> resultSetFuture = queryExecutor.submit(() -> {
-            try {
-                Statement stmt = connection.createStatement();
-                stmt.executeQuery(query);
-                return stmt.getResultSet();
-            } catch (SQLException e) {
-                e.printStackTrace();
-                return null;
-//            }
-//        });
-//        try {
-//            return resultSetFuture.get();
-//        } catch (InterruptedException | ExecutionException e) {
-//            e.printStackTrace();
-//            return null;
+        try {
+            Statement stmt = connection.createStatement();
+            stmt.executeQuery(query);
+            return stmt.getResultSet();
+        } catch (SQLException e) {
+            e.printStackTrace();
+            return null;
         } finally {
             pool.pop(connection);
         }
