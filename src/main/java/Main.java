@@ -1,3 +1,4 @@
+import javafx.util.Pair;
 import org.apache.poi.ss.usermodel.Row;
 import org.apache.poi.ss.usermodel.Sheet;
 import org.apache.poi.ss.usermodel.Workbook;
@@ -16,6 +17,7 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -79,22 +81,38 @@ public class Main {
                 }
                 Set<Integer> init = app.init();
                 Workbook book = null;
+                Sheet sheetEdge = null;
                 Sheet sheet = null;
                 try {
                     FileInputStream fis = new FileInputStream(file);
                     book = new XSSFWorkbook(fis);
+                    sheetEdge = book.getSheet(sheetName + "Edge");
+                    if (sheetEdge != null) {
+                        book.removeName(sheetName + "Edge");
+                    }
+                    if (sheetEdge == null) {
+                        sheetEdge = book.createSheet(sheetName + "Edge");
+                        Row row = sheetEdge.createRow(sheetEdge.getPhysicalNumberOfRows());
+                        row.createCell(0).setCellValue("source");
+                        row.createCell(1).setCellValue("target");
+                        row.createCell(2).setCellValue("Цвет");
+                    }
+
                     sheet = book.getSheet(sheetName);
+                    if (sheet != null) {
+                        book.removeName(sheetName);
+                    }
                     if (sheet == null) {
                         sheet = book.createSheet(sheetName);
                         Row row = sheet.createRow(sheet.getPhysicalNumberOfRows());
-                        row.createCell(0).setCellValue("source");
-                        row.createCell(1).setCellValue("target");
+                        row.createCell(0).setCellValue("id");
+                        row.createCell(1).setCellValue("Размер");
                     }
                 } catch (Exception e) {
                     e.printStackTrace();
                 }
                 for (Integer i : app.init()) {
-                    app.exportFriendship(i, sheet);
+                    app.exportFriendship(i, sheetEdge, sheet);
                 }
                 try {
                     FileOutputStream fileOutputStream = new FileOutputStream(file, true);
@@ -134,23 +152,50 @@ public class Main {
         System.out.println("[КОНЕЦ ПРОГАРММЫ]");
     }
 
-    public void exportFriendship(int parent, Sheet sheet) {
+    public void exportFriendship(int parent, Sheet sheetEdge, Sheet sheet) {
+
+        init().forEach(i -> {
+            Row row = sheet.createRow(sheet.getPhysicalNumberOfRows());
+            putTarget(i, row);
+        });
 
         this.storage.getDirectFriendship(parent, init()).forEach((key, value) -> {
-            Row row = sheet.createRow(sheet.getPhysicalNumberOfRows());
-            putEdge(key, value, row);
+            Row row = sheetEdge.createRow(sheetEdge.getPhysicalNumberOfRows());
+            putEdgeDirect(key, value, row);
             System.out.printf("Найдена прямая связь %d - %d%n", key, value);
         });
         Set<Integer> init = this.storage.getFindedFriendship();
-        this.storage.getIndirectFriendship(parent, init).forEach(pair -> {
-            Row row = sheet.createRow(sheet.getPhysicalNumberOfRows());
-            putEdge(pair.getKey(), pair.getValue(), row);
-        });
+        List<Pair<Integer, Integer>> friendship = this.storage.getIndirectFriendship(parent, init);
+        for (Pair<Integer, Integer> entry : friendship) {
+            if (!entry.getKey().equals(entry.getValue())) {
+                Row row = sheetEdge.createRow(sheetEdge.getPhysicalNumberOfRows());
+                putDefaultEdge(entry.getKey(), entry.getValue(), row);
+            }
+        }
     }
 
-    private void putEdge(int source, int target, Row row) {
+    private void putEdgeDirect(int source, int target, Row row) {
         row.createCell(0).setCellValue(source);
         row.createCell(1).setCellValue(target);
+        row.createCell(2).setCellValue("#ff0000");
+    }
+
+    private void putEdgeIndirect(int source, int target, Row row) {
+        row.createCell(0).setCellValue(source);
+        row.createCell(1).setCellValue(target);
+        row.createCell(2).setCellValue("#ff8000");
+    }
+
+    private void putDefaultEdge(int source, int target, Row row) {
+        row.createCell(0).setCellValue(source);
+        row.createCell(1).setCellValue(target);
+        row.createCell(2).setCellValue("#cccccc");
+    }
+
+    private void putTarget(int target, Row row) {
+        row.createCell(0).setCellValue(target);
+        row.createCell(1).setCellValue(10.0);
+        row.createCell(2).setCellValue(10.0);
     }
 
     /**
@@ -170,7 +215,16 @@ public class Main {
     public Set<Integer> init() {
         if (targets == null) {
             targets = Stream.of(
-                    0/*СПИСОК ID пользователей, между которыми нужно найти связь*/
+                    481912255,
+                    473985858,
+                    469584270,
+                    468849451,
+                    454992562,
+                    437930392,
+                    432905063,
+                    427347865,
+                    423967541,
+                    418024900/*СПИСОК ID пользователей, между которыми нужно найти связь*/
             ).collect(Collectors.toSet());
         }
         return targets;
